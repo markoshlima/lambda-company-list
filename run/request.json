@@ -1,0 +1,5 @@
+{
+  "pathParameters": {
+    "company_id": "uuid-testing"
+  }
+}

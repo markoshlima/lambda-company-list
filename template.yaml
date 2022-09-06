@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: Servico para obter uma empresa
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: companyList
+    Description: Servico para obter uma empresa
+    Author: makoshlima
+    SpdxLicenseId: Apache-2.0
+    LicenseUrl: LICENSE.txt
+    ReadmeUrl: README.md
+    Labels: ['company-list']
+    SemanticVersion: 0.0.1
+
+Resources:
+  companyList:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.9
+      CodeUri: ./src
+      Description: 'Servico para obter uma empresa'
+      MemorySize: 128
+      Timeout: 3
+      Role: 'arn:aws:iam::${AWS::AccountId}:role/LambdaFunctionsRole'
+      Environment:
+        Variables:
+          TABLE: 'company'
+      AutoPublishAlias: prd
+      DeploymentPreference:
+        Type: CodeDeployDefault.LambdaLinear10PercentEvery1Minute #LambdaAllAtOnce
+        Alarms:
+        - !Ref AliasErrorMetricGreaterThanZeroAlarm
+        Hooks:
+          PreTraffic: !Ref BeforeAllowTraffic
+          PostTraffic: !Ref AfterAllowTraffic
+  
+  AliasErrorMetricGreaterThanZeroAlarm:
+    Type: "AWS::CloudWatch::Alarm"
+    Properties:
+      AlarmDescription: Lambda Function Error > 0
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: Resource
+          Value: !Sub "${companyList}:prd"
+        - Name: FunctionName
+          Value: !Ref companyList
+      EvaluationPeriods: 2
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 60
+      Statistic: Sum
+      Threshold: 0
+    
+  BeforeAllowTraffic:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./hooks
+      Handler: pretraffic.handler
+      FunctionName: 'CodeDeployHook_BeforeAllowTraffic_CompanyList'
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - "codedeploy:PutLifecycleEventHookExecutionStatus"
+              Resource:
+                !Sub 'arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*'
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - "lambda:InvokeFunction"
+              Resource: !Ref companyList.Version
+      Runtime: nodejs12.x
+      DeploymentPreference:
+        Enabled: false
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          NewVersion: !Ref companyList.Version
+          LifecycleStatus: Succeeded
+
+  AfterAllowTraffic:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./hooks
+      Handler: postraffic.handler
+      FunctionName: 'CodeDeployHook_AfterAllowTraffic_CompanyList'
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - "codedeploy:PutLifecycleEventHookExecutionStatus"
+              Resource:
+                !Sub 'arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*'
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - "lambda:InvokeFunction"
+              Resource: "arn:aws:lambda:sa-east-1:${AWS::AccountId}:function:testIntegrationCompany"
+      Runtime: nodejs12.x
+      DeploymentPreference:
+        Enabled: false
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          NewVersion: !Ref companyList.Version
+          LifecycleStatus: Succeeded
